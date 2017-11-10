@@ -1,4 +1,4 @@
-import {ComponentOptions} from "@pango/components";
+import {ComponentOptions} from "pango-components";
 
 export interface STM32CubeMXComponentOptions extends ComponentOptions {
     stm32cubemx?: string;

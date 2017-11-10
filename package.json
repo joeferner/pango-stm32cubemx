@@ -1,5 +1,5 @@
 {
-  "name": "@pango/stm32cubemx",
+  "name": "pango-stm32cubemx",
   "version": "0.0.1",
   "description": "Pango component to process STM32CubeMX files",
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
   },
   "peerDependencies": {
     "pango": "0.0.1",
-    "@pango/components": "0.0.1"
+    "pango-components": "0.0.1"
   },
   "dependencies": {
     "@types/ejs": "^2.3.33",

@@ -1,4 +1,4 @@
-import {Component} from "@pango/components";
+import {Component} from "pango-components";
 import {ProjectOptions} from "pango";
 import {STM32CubeMXComponentOptions} from "./STM32CubeMXComponentOptions";
 import {STM32CubeMXBuildTarget} from "./STM32CubeMXBuildTarget";
