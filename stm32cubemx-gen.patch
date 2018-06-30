@@ -1,27 +1,29 @@
---- build/stm32cubemx/Src/main.c
-+++ build/stm32cubemx/Src/main.c
-@@ -58,6 +58,8 @@
-
+--- /home/jferner/dev/pi-dc-electronic-load/stm32-firmware/build/stm32cubemx/gen/Src/main.c	2018-06-30 13:45:57.960841020 -0400
++++ /home/jferner/dev/pi-dc-electronic-load/stm32-firmware/build/stm32cubemx/gen/Src/main.c.new	2018-06-30 13:46:32.044175340 -0400
+@@ -59,6 +59,8 @@
+ 
  /* USER CODE BEGIN PFP */
  /* Private function prototypes -----------------------------------------------*/
 +extern void setup();
 +extern void loop();
-
+ 
  /* USER CODE END PFP */
-
-@@ -87,13 +89,14 @@
-   MX_USART1_UART_Init();
-
+ 
+@@ -97,7 +99,7 @@
+   MX_GPIO_Init();
+   MX_USART2_UART_Init();
    /* USER CODE BEGIN 2 */
 -
 +  setup();
    /* USER CODE END 2 */
-
+ 
    /* Infinite loop */
-   /* USER CODE BEGIN WHILE */
-   while (1)
-   {
-+    loop();
+@@ -108,7 +110,7 @@
    /* USER CODE END WHILE */
-
+ 
    /* USER CODE BEGIN 3 */
+-
++    loop();
+   }
+   /* USER CODE END 3 */
+ 
