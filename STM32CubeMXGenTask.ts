@@ -15,6 +15,7 @@ export class STM32CubeMXGenTask extends Task {
     run(taskOptions: TaskOptions): Promise<void> {
         const genDir: string = path.join(taskOptions.projectOptions.buildDir, 'stm32cubemx', 'gen');
         const component: STM32CubeMXComponentOptions = taskOptions.projectOptions.components[COMPONENT_NAME];
+        const armGccComponent = taskOptions.projectOptions.components['arm-gcc'] || {};
         const iocFile = path.join(genDir, 'stm32cubemx.ioc');
         const touchFile = path.join(genDir, 'stm32cubemxgen');
         return Promise.all([
@@ -45,7 +46,7 @@ export class STM32CubeMXGenTask extends Task {
                             });
                     })
                     .then(() => {
-                        return this.addInfoFromMakefile(taskOptions.projectOptions, component, genDir);
+                        return this.addInfoFromMakefile(taskOptions.projectOptions, component, armGccComponent, genDir);
                     });
             });
     }
@@ -161,13 +162,15 @@ export class STM32CubeMXGenTask extends Task {
     private addInfoFromMakefile(
         projectOptions: ProjectOptions,
         component: STM32CubeMXComponentOptions,
+        armGccComponent,
         genDir: string
-    ) {
+    ): Promise<void> {
         const sourceFiles = new Set();
         const includeDirs = new Set();
         const compilerOptions = new Set();
         const linkerOptions = new Set();
         const makefile = path.resolve(genDir, 'Makefile');
+        let ldFile;
         return fs.readFile(makefile, 'utf8')
             .then(makefileContent => {
                 const vars = MakefileParser.parse(makefileContent);
@@ -186,9 +189,10 @@ export class STM32CubeMXGenTask extends Task {
                     linkerOptions,
                     MakefileParser.stringToArray(MakefileParser.resolve(vars, vars['LDFLAGS']))
                         .map(f => {
-                            const m = f.trim().match(/^-T(.*).ld$/);
+                            const m = f.trim().match(/^-T(.*?\.ld)$/);
                             if (m) {
-                                f = `-T${path.join(genDir, m[1])}.ld`
+                                ldFile = path.join(genDir, m[1]);
+                                f = `-T${ldFile}`
                             }
                             return f;
                         })
@@ -216,6 +220,30 @@ export class STM32CubeMXGenTask extends Task {
                 Array.prototype.push.apply(component.includeDirs, Array.from(includeDirs));
                 Array.prototype.push.apply(component.compilerOptions, Array.from(compilerOptions));
                 Array.prototype.push.apply(component.linkerOptions, Array.from(linkerOptions));
+
+                if (ldFile) {
+                    // TODO patch ld file with flash start, ram start, and eeprom start values
+                    // LINK_FLASH_START       ?= 0x08000000
+                    // LINK_RAM_START         ?= 0x20000000
+                    // LINK_DATA_EEPROM_START ?= 0x08080000
+                    // MEMORY
+                    // {
+                    //     FLASH (rx)      : ORIGIN = $(LINK_FLASH_START), LENGTH = $(LINK_FLASH_LENGTH)
+                    //     RAM (xrw)       : ORIGIN = $(LINK_RAM_START), LENGTH = $(LINK_RAM_LENGTH)
+                    // }
+                    return fs.readFile(ldFile, 'utf8')
+                        .then(ldFileContents => {
+                            let m = ldFileContents.match(/^RAM.*LENGTH = (.*?)K$/m);
+                            if (m) {
+                                armGccComponent.ram = parseInt(m[1]) * 1024;
+                            }
+
+                            m = ldFileContents.match(/^FLASH.*LENGTH = (.*?)K$/m);
+                            if (m) {
+                                armGccComponent.flash = parseInt(m[1]) * 1024;
+                            }
+                        });
+                }
             });
     }
 }
