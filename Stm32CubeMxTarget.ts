@@ -1,48 +1,47 @@
-import {ProjectOptions, Task, TaskOptions} from "pango";
-import * as fs from "fs-extra";
+import {ProjectOptions, Shell, Target, Targets} from "pango";
+import {getStm32CubeMxOptions, Stm32CubeMxOptions} from "./Stm32CubeMxOptions";
 import * as path from "path";
+import * as fs from "fs-extra";
 import * as ejs from "ejs";
 import * as glob from "glob-promise";
-import {COMPONENT_NAME} from "./STM32CubeMXComponent";
-import {STM32CubeMXComponentOptions} from "./STM32CubeMXComponentOptions";
 import {MakefileParser} from "./MakefileParser";
 
-export class STM32CubeMXGenTask extends Task {
-    getPostRequisites(projectOptions: ProjectOptions): string[] {
-        return ['compile'];
-    }
+export class Stm32CubeMxTarget implements Target {
+    helpMessage = 'Generate source files from STM32CubeMX .ioc project';
+    preRequisites: ['initialize'];
+    postRequisites = ['generate-sources'];
 
-    async run(taskOptions: TaskOptions): Promise<void> {
-        const genDir: string = path.join(taskOptions.projectOptions.buildDir, 'stm32cubemx', 'gen');
-        const component: STM32CubeMXComponentOptions = taskOptions.projectOptions.components[COMPONENT_NAME];
-        const armGccComponent = taskOptions.projectOptions.components['arm-gcc'] || {};
-        const iocFile = path.join(genDir, 'stm32cubemx.ioc');
+    async run(projectOptions: ProjectOptions): Promise<void | Targets | string[]> {
+        const options = getStm32CubeMxOptions(projectOptions);
+        const genDir: string = path.join(projectOptions.buildDir, 'stm32cubemx', 'gen');
+        const outputIocFile = path.join(genDir, 'stm32cubemx.ioc');
         const touchFile = path.join(genDir, 'stm32cubemxgen');
+        const stm32CubeMxExecutableFile = options.stm32cubemx;
         await fs.mkdirs(genDir);
-        const inputIocFile = await this.getInputIocFile(taskOptions);
-        taskOptions.log.info('ioc file:', inputIocFile);
+        const inputIocFile = await this.getInputIocFile(projectOptions, options);
+        projectOptions.logger.info(`processing ioc file: ${inputIocFile}`);
         const changed = await this.hasIocChanged(inputIocFile, touchFile);
         if (changed) {
             const scriptFile = await this.writeScriptTemplate(genDir);
-            await fs.copy(inputIocFile, iocFile);
-            await this.runSTM32CubeMX(taskOptions, genDir, scriptFile, component);
-            await this.patchFiles(taskOptions, genDir);
+            await fs.copy(inputIocFile, outputIocFile);
+            await this.runSTM32CubeMX(projectOptions, stm32CubeMxExecutableFile, genDir, scriptFile);
+            await this.patchFiles(projectOptions, options, genDir);
             await this.writeTouchFile(touchFile);
         }
-        return this.addInfoFromMakefile(taskOptions.projectOptions, component, armGccComponent, genDir);
+        return this.addInfoFromMakefile(projectOptions, genDir);
     }
 
     private async writeTouchFile(touchFile: string): Promise<void> {
-        return fs.writeFile(touchFile, new Date().toString());
+        fs.writeFile(touchFile, new Date().toString());
     }
 
     private async runSTM32CubeMX(
-        taskOptions: TaskOptions,
+        projectOptions: ProjectOptions,
+        stm32CubeMxExecutableFile: string,
         genDir: string,
-        scriptFile: string,
-        component: STM32CubeMXComponentOptions
+        scriptFile: string
     ): Promise<void> {
-        return this.shell(taskOptions, [component.stm32cubemx || 'stm32cubemx', '-q', scriptFile], {
+        return Shell.shell(projectOptions, [stm32CubeMxExecutableFile, '-q', scriptFile], {
             cwd: genDir
         });
     }
@@ -59,20 +58,22 @@ export class STM32CubeMXGenTask extends Task {
         return fileName;
     }
 
-    private async getInputIocFile(taskOptions: TaskOptions): Promise<string> {
-        const component: STM32CubeMXComponentOptions = taskOptions.projectOptions.components[COMPONENT_NAME];
-        const inputIocFile = component.iocFile;
+    private async getInputIocFile(projectOptions: ProjectOptions, options: Stm32CubeMxOptions): Promise<string> {
+        const inputIocFile = options.iocFile;
         if (inputIocFile) {
             return inputIocFile;
         }
-        let projectDir = taskOptions.projectOptions.projectDir;
+        let projectDir = projectOptions.projectDir;
         let results = await glob('**/*.ioc', {
             cwd: projectDir,
             follow: true,
-            ignore: ['node_modules/**', path.join(taskOptions.projectOptions.buildDir, '**')]
+            ignore: [
+                'node_modules/**',
+                path.relative(projectDir, path.join(projectOptions.buildDir, '**'))
+            ]
         });
         results = results.filter(r => {
-            return !r.startsWith(taskOptions.projectOptions.buildDir);
+            return !r.startsWith(projectOptions.buildDir);
         });
         if (results.length === 0) {
             throw new Error('Could not find .ioc file in project directories');
@@ -93,28 +94,27 @@ export class STM32CubeMXGenTask extends Task {
         }
     }
 
-    private async patchFiles(taskOptions: TaskOptions, genDir: string): Promise<void> {
-        await this.patchMainC(taskOptions, genDir);
-        await this.patchHFiles(taskOptions, genDir);
+    private async patchFiles(projectOptions: ProjectOptions, options: Stm32CubeMxOptions, genDir: string): Promise<void> {
+        await this.patchMainC(projectOptions, genDir);
+        await this.patchHFiles(options, genDir);
     }
 
-    private async patchMainC(taskOptions: TaskOptions, genDir: string) {
-        await this.shell(taskOptions, ['dos2unix', path.resolve(genDir, 'Src/main.c')]);
-        return this.shell(taskOptions, ['patch', '-N', path.resolve(genDir, 'Src/main.c'), path.resolve(__dirname, '../stm32cubemx-gen.patch')]);
+    private async patchMainC(projectOptions: ProjectOptions, genDir: string) {
+        await Shell.shell(projectOptions, ['dos2unix', path.resolve(genDir, 'Src/main.c')]);
+        return Shell.shell(projectOptions, ['patch', '-N', path.resolve(genDir, 'Src/main.c'), path.resolve(__dirname, '../stm32cubemx-gen.patch')]);
     }
 
-    private async patchHFiles(taskOptions: TaskOptions, genDir: string) {
+    private async patchHFiles(options: Stm32CubeMxOptions, genDir: string) {
         let cwd = path.resolve(genDir, 'Drivers/CMSIS/Device/ST');
         const hFiles = await glob('**/*.h', {cwd: cwd, follow: true})
         return Promise.all(hFiles.map(hFile => {
-            return this.patchHFile(taskOptions, path.resolve(cwd, hFile));
+            return this.patchHFile(options, path.resolve(cwd, hFile));
         }));
     }
 
-    private async patchHFile(taskOptions: TaskOptions, hFile: string) {
-        const component: STM32CubeMXComponentOptions = taskOptions.projectOptions.components[COMPONENT_NAME];
-        const flashStart = component.flashStart || 0x08000000;
-        const eePromStart = component.eePromStart || 0x08080000;
+    private async patchHFile(options: Stm32CubeMxOptions, hFile: string) {
+        const flashStart = options.flashStart || 0x08000000;
+        const eePromStart = options.eePromStart || 0x08080000;
         let contents: string = await fs.readFile(hFile, 'utf8')
         contents = contents.replace(/^#define(\s+?)FLASH_BASE\s+.*$/gm, `#define FLASH_BASE ((uint32_t)0x${flashStart.toString(16)})`);
         contents = contents.replace(/^#define(\s+?)DATA_EEPROM_BASE\s+.*$/gm, `#define DATA_EEPROM_BASE ((uint32_t)0x${eePromStart.toString(16)})`);
@@ -123,8 +123,6 @@ export class STM32CubeMXGenTask extends Task {
 
     private async addInfoFromMakefile(
         projectOptions: ProjectOptions,
-        component: STM32CubeMXComponentOptions,
-        armGccComponent,
         genDir: string
     ): Promise<void> {
         const sourceFiles = new Set();
@@ -157,7 +155,7 @@ export class STM32CubeMXGenTask extends Task {
                     return f;
                 })
                 .filter(f => {
-                    // TODO refactor to menuconfig
+                    // TODO refactor to user config
                     if (f === '-lnosys') {
                         return false;
                     }
@@ -165,21 +163,27 @@ export class STM32CubeMXGenTask extends Task {
                 })
         );
 
-        Array.prototype.push.apply(
-            component.sourceFiles,
-            Array.from(sourceFiles)
+        projectOptions.sourceFiles = projectOptions.sourceFiles || [];
+        projectOptions.sourceFiles.push(
+            ...Array.from(sourceFiles)
                 .map(sourceFile => {
                     const filePathWithoutExt = path.basename(sourceFile, path.extname(sourceFile));
                     return {
-                        filePath: path.resolve(genDir, sourceFile),
-                        outputPath: path.join(projectOptions.buildDir, COMPONENT_NAME, filePathWithoutExt) + '.o',
-                        depPath: path.join(projectOptions.buildDir, COMPONENT_NAME, filePathWithoutExt) + '.d',
+                        fileName: path.resolve(genDir, sourceFile),
+                        outputPath: path.join(projectOptions.buildDir, 'stm32cubemx', filePathWithoutExt) + '.o',
+                        depPath: path.join(projectOptions.buildDir, 'stm32cubemx', filePathWithoutExt) + '.d',
                     };
                 })
         );
-        Array.prototype.push.apply(component.includeDirs, Array.from(includeDirs));
-        Array.prototype.push.apply(component.compilerOptions, Array.from(compilerOptions));
-        Array.prototype.push.apply(component.linkerOptions, Array.from(linkerOptions));
+
+        projectOptions.includeDirs = projectOptions.includeDirs || [];
+        projectOptions.includeDirs.push(...Array.from(includeDirs));
+
+        projectOptions.compilerOptions = projectOptions.compilerOptions || [];
+        projectOptions.compilerOptions.push(...Array.from(compilerOptions));
+
+        projectOptions.linkerOptions = projectOptions.linkerOptions || [];
+        projectOptions.linkerOptions.push(...Array.from(linkerOptions));
 
         if (ldFile) {
             // TODO patch ld file with flash start, ram start, and eeprom start values
@@ -194,12 +198,12 @@ export class STM32CubeMXGenTask extends Task {
             const ldFileContents = await fs.readFile(ldFile, 'utf8');
             let m = ldFileContents.match(/^RAM.*LENGTH = (.*?)K$/m);
             if (m) {
-                armGccComponent.ram = parseInt(m[1]) * 1024;
+                projectOptions.ram = parseInt(m[1]) * 1024;
             }
 
             m = ldFileContents.match(/^FLASH.*LENGTH = (.*?)K$/m);
             if (m) {
-                armGccComponent.flash = parseInt(m[1]) * 1024;
+                projectOptions.flash = parseInt(m[1]) * 1024;
             }
         }
     }
