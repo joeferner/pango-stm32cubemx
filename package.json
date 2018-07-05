@@ -5,16 +5,16 @@
   "main": "dist/index.js",
   "author": "Joe Ferner <joe@fernsroth.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joeferner/pango-stm32cubemx.git"
+  },
   "scripts": {
-    "prepublish": "npm run build",
-    "build": "tsc",
+    "prepare": "tsc",
     "watch": "tsc --watch"
   },
   "devDependencies": {
     "typescript": "^2.5.3"
-  },
-  "peerDependencies": {
-    "pango": "0.0.x"
   },
   "dependencies": {
     "@types/ejs": "^2.3.33",
@@ -23,6 +23,7 @@
     "ejs": "^2.5.7",
     "fs-extra": "^4.0.2",
     "glob": "^7.1.2",
-    "glob-promise": "^3.3.0"
+    "glob-promise": "^3.3.0",
+    "pango": "0.0.x"
   }
 }

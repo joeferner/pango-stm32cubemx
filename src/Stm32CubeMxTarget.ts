@@ -47,7 +47,7 @@ export class Stm32CubeMxTarget implements Target {
     }
 
     private async writeScriptTemplate(genDir: string) {
-        const templateFile = path.join(__dirname, '../stm32cubemx-gen.script.ejs');
+        const templateFile = path.join(__dirname, '../src/stm32cubemx-gen.script.ejs');
         const content = await fs.readFile(templateFile, 'utf8');
         const template = ejs.compile(content);
         const renderedContent = template({
@@ -101,7 +101,7 @@ export class Stm32CubeMxTarget implements Target {
 
     private async patchMainC(projectOptions: ProjectOptions, genDir: string) {
         await Shell.shell(projectOptions, ['dos2unix', path.resolve(genDir, 'Src/main.c')]);
-        return Shell.shell(projectOptions, ['patch', '-N', path.resolve(genDir, 'Src/main.c'), path.resolve(__dirname, '../stm32cubemx-gen.patch')]);
+        return Shell.shell(projectOptions, ['patch', '-N', path.resolve(genDir, 'Src/main.c'), path.resolve(__dirname, '../src/stm32cubemx-gen.patch')]);
     }
 
     private async patchHFiles(options: Stm32CubeMxOptions, genDir: string) {
