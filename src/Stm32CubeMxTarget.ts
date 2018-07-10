@@ -17,11 +17,16 @@ export class Stm32CubeMxTarget implements Target {
         const outputIocFile = path.join(genDir, 'stm32cubemx.ioc');
         const touchFile = path.join(genDir, 'stm32cubemxgen');
         const stm32CubeMxExecutableFile = options.stm32cubemx;
-        await fs.mkdirs(genDir);
         const inputIocFile = await this.getInputIocFile(projectOptions, options);
         projectOptions.logger.info(`processing ioc file: ${inputIocFile}`);
         const changed = await this.hasIocChanged(inputIocFile, touchFile);
         if (changed) {
+            if (fs.pathExists(genDir)) {
+                projectOptions.logger.info(`Deleting old directory ${path.resolve(genDir)}`);
+                await fs.remove(path.resolve(genDir));
+            }
+            await fs.mkdirs(genDir);
+
             const scriptFile = await this.writeScriptTemplate(genDir);
             await fs.copy(inputIocFile, outputIocFile);
             await this.runSTM32CubeMX(projectOptions, stm32CubeMxExecutableFile, genDir, scriptFile);
