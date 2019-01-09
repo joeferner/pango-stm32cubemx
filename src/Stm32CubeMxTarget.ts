@@ -105,13 +105,13 @@ export class Stm32CubeMxTarget implements Target {
     }
 
     private async patchMainC(projectOptions: ProjectOptions, genDir: string) {
-        await Shell.shell(projectOptions, ['dos2unix', path.resolve(genDir, 'Src/main.c')]);
-        return Shell.shell(projectOptions, ['patch', '-N', path.resolve(genDir, 'Src/main.c'), path.resolve(__dirname, '../src/stm32cubemx-gen.patch')]);
+        await Shell.shell(projectOptions, ['dos2unix', path.resolve(genDir, 'pango/Src/main.c')]);
+        return Shell.shell(projectOptions, ['patch', '-N', path.resolve(genDir, 'pango/Src/main.c'), path.resolve(__dirname, '../src/stm32cubemx-gen.patch')]);
     }
 
     private async patchHFiles(options: Stm32CubeMxOptions, genDir: string) {
-        let cwd = path.resolve(genDir, 'Drivers/CMSIS/Device/ST');
-        const hFiles = await glob('**/*.h', {cwd: cwd, follow: true})
+        let cwd = path.resolve(genDir, 'pango', 'Drivers', 'CMSIS', 'Device', 'ST');
+        const hFiles = await glob('**/*.h', {cwd: cwd, follow: true});
         return Promise.all(hFiles.map(hFile => {
             return this.patchHFile(options, path.resolve(cwd, hFile));
         }));
@@ -134,7 +134,7 @@ export class Stm32CubeMxTarget implements Target {
         const includeDirs = new Set();
         const compilerOptions = new Set();
         const linkerOptions = new Set();
-        const makefile = path.resolve(genDir, 'Makefile');
+        const makefile = path.resolve(genDir, 'pango', 'Makefile');
         let ldFile;
         const makefileContent = await fs.readFile(makefile, 'utf8');
         const vars = MakefileParser.parse(makefileContent);
@@ -144,7 +144,7 @@ export class Stm32CubeMxTarget implements Target {
             includeDirs,
             MakefileParser.stringToArray(vars['C_INCLUDES'])
                 .map(i => i.substr('-I'.length))
-                .map(i => path.resolve(genDir, i))
+                .map(i => path.resolve(genDir, 'pango', i))
         );
         addAllToSet(compilerOptions, MakefileParser.stringToArray(vars['C_DEFS']));
         addAllToSet(compilerOptions, MakefileParser.stringToArray(MakefileParser.resolve(vars, vars['MCU'])));
@@ -154,7 +154,7 @@ export class Stm32CubeMxTarget implements Target {
                 .map(f => {
                     const m = f.trim().match(/^-T(.*?\.ld)$/);
                     if (m) {
-                        ldFile = path.join(genDir, m[1]);
+                        ldFile = path.join(genDir, 'pango', m[1]);
                         f = `-T${ldFile}`
                     }
                     return f;
@@ -174,7 +174,7 @@ export class Stm32CubeMxTarget implements Target {
                 .map(sourceFile => {
                     const filePathWithoutExt = path.basename(sourceFile, path.extname(sourceFile));
                     return {
-                        fileName: path.resolve(genDir, sourceFile),
+                        fileName: path.resolve(genDir, 'pango', sourceFile),
                         outputPath: path.join(projectOptions.buildDir, 'stm32cubemx', filePathWithoutExt) + '.o',
                         depPath: path.join(projectOptions.buildDir, 'stm32cubemx', filePathWithoutExt) + '.d',
                     };
