@@ -24,6 +24,6 @@
     "fs-extra": "^4.0.2",
     "glob": "^7.1.2",
     "glob-promise": "^3.3.0",
-    "pango": "0.0.x"
+    "pango": "../pango"
   }
 }
