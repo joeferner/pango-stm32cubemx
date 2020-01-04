@@ -136,7 +136,9 @@ export class Stm32CubeMxTarget implements Target {
         const linkerOptions = new Set();
         const makefile = path.resolve(genDir, 'pango', 'Makefile');
         let ldFile;
-        const makefileContent = await fs.readFile(makefile, 'utf8');
+        let makefileContent = await fs.readFile(makefile, 'utf8');
+        makefileContent = makefileContent.replace(/BUILD_DIR.*?=.*/, `BUILD_DIR = ${projectOptions.buildDir}`);
+        await fs.writeFile(makefile, makefileContent);
         const vars = MakefileParser.parse(makefileContent);
         addAllToSet(sourceFiles, MakefileParser.stringToArray(vars['C_SOURCES']));
         addAllToSet(sourceFiles, MakefileParser.stringToArray(vars['ASM_SOURCES']));
@@ -191,24 +193,44 @@ export class Stm32CubeMxTarget implements Target {
         projectOptions.linkerOptions.push(...Array.from(linkerOptions));
 
         if (ldFile) {
-            // TODO patch ld file with flash start, ram start, and eeprom start values
-            // LINK_FLASH_START       ?= 0x08000000
-            // LINK_RAM_START         ?= 0x20000000
-            // LINK_DATA_EEPROM_START ?= 0x08080000
-            // MEMORY
-            // {
-            //     FLASH (rx)      : ORIGIN = $(LINK_FLASH_START), LENGTH = $(LINK_FLASH_LENGTH)
-            //     RAM (xrw)       : ORIGIN = $(LINK_RAM_START), LENGTH = $(LINK_RAM_LENGTH)
-            // }
-            const ldFileContents = await fs.readFile(ldFile, 'utf8');
-            let m = ldFileContents.match(/^RAM.*LENGTH = (.*?)K$/m);
+            const ldFileOrig = `${ldFile}.orig`;
+            let ldFileContents;
+            try {
+                ldFileContents = await fs.readFile(ldFileOrig, 'utf8');
+            } catch (err) {
+                ldFileContents = await fs.readFile(ldFile, 'utf8');
+            }
+            let m = ldFileContents.match(/^RAM(.*)LENGTH = (.*?)K$/m);
             if (m) {
-                projectOptions.ram = parseInt(m[1]) * 1024;
+                projectOptions.ram = parseInt(m[2]) * 1024;
             }
 
-            m = ldFileContents.match(/^FLASH.*LENGTH = (.*?)K$/m);
+            m = ldFileContents.match(/^FLASH(.*)LENGTH = (.*?)K$/m);
             if (m) {
-                projectOptions.flash = parseInt(m[1]) * 1024;
+                projectOptions.flash = parseInt(m[2]) * 1024;
+                const originMatch = m[1].match(/ORIGIN = 0x([0-9a-fA-F]+)/);
+                if (originMatch) {
+                    projectOptions.flashOrigin = parseInt(originMatch[1], 16);
+                }
+            }
+
+            if (projectOptions.stm32cubemx && projectOptions.stm32cubemx.ldFileFilters) {
+                await fs.writeFile(ldFileOrig, ldFileContents, 'utf8');
+
+                // TODO patch ld file with flash start, ram start, and eeprom start values
+                // LINK_FLASH_START       ?= 0x08000000
+                // LINK_RAM_START         ?= 0x20000000
+                // LINK_DATA_EEPROM_START ?= 0x08080000
+                // MEMORY
+                // {
+                //     FLASH (rx)      : ORIGIN = $(LINK_FLASH_START), LENGTH = $(LINK_FLASH_LENGTH)
+                //     RAM (xrw)       : ORIGIN = $(LINK_RAM_START), LENGTH = $(LINK_RAM_LENGTH)
+                // }
+                for (const filter of projectOptions.stm32cubemx.ldFileFilters) {
+                    ldFileContents = await filter(ldFileContents);
+                }
+
+                await fs.writeFile(ldFile, ldFileContents, 'utf8');
             }
         }
     }
